@@ -8,6 +8,7 @@
 #include "sys/socket.h"
 #include "arpa/inet.h"
 #include <fcntl.h>
+#include <stdbool.h>
 
 #include "esp_log.h"
 
@@ -41,28 +42,61 @@ typedef struct ws_client *ws_client_t;
 const static int max_clients = 10;
 static ws_client_t clients[10];
 struct ws_client clients_mem[10];
+static int clients_num;
 
 static char* ws_hash_handshake(const char* handshake, char *ret) {
-  const char hash[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-  const uint8_t hash_len = sizeof(hash);
-  char key[64];
-  unsigned char sha1sum[20];
-  unsigned int ret_len;
-  int len;
+	const char hash[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+	const uint8_t hash_len = sizeof(hash);
+	char key[64];
+	unsigned char sha1sum[20];
+	unsigned int ret_len;
+	int len;
 
-  len = strlen(handshake);
+	len = strlen(handshake);
 
-  if(!len) return NULL;
+	if(!len) return NULL;
 
-  memcpy(key,handshake,len);
-  strlcpy(&key[len],hash,sizeof(key));
-  mbedtls_sha1((unsigned char*)key,len+hash_len-1,sha1sum);
-  mbedtls_base64_encode(NULL, 0, &ret_len, sha1sum, 20);
-  if(!mbedtls_base64_encode((unsigned char*)ret,32,&ret_len,sha1sum,20)) {
-    ret[ret_len] = '\0';
-    return ret;
-  }
-  return NULL;
+	memcpy(key,handshake,len);
+	strlcpy(&key[len],hash,sizeof(key));
+	mbedtls_sha1((unsigned char*)key,len+hash_len-1,sha1sum);
+	mbedtls_base64_encode(NULL, 0, &ret_len, sha1sum, 20);
+	if(!mbedtls_base64_encode((unsigned char*)ret,32,&ret_len,sha1sum,20)) {
+		ret[ret_len] = '\0';
+		return ret;
+	}
+	return NULL;
+}
+
+static esp_err_t ws_send(ws_client_t client, const uint8_t *payload, uint64_t payload_length, int opcode) {
+	uint8_t buf[WS_BUF_LENGTH];
+	int hdr_len = 2;
+	int ret;
+
+	buf[0] = (opcode & 0x0f) | 0x80;
+	buf[1] = payload_length > 125 ? 125 : payload_length;
+
+	if (payload_length > WS_BUF_LENGTH - hdr_len) {
+		ESP_LOGW(TAG, "Sent too much data to %d", client->sockfd);
+		client->state = WS_STATE_CLOSED;
+		return ESP_FAIL;
+	}
+	memcpy(buf + hdr_len, payload, payload_length);
+
+	ret = send(client->sockfd, buf, hdr_len + payload_length, 0);
+
+	return ret < 0 ? ESP_FAIL : ESP_OK;
+}
+
+int ws_send_all(const uint8_t *payload, uint64_t payload_length, int opcode) {
+	esp_err_t ret;
+	int succ = 0;
+	for (int i = 0; i < clients_num; i++) {
+		ret = ws_send(clients[i], payload, payload_length, opcode);
+		if (ret == ESP_OK) {
+			succ++;
+		}
+	}
+	return succ;
 }
 
 static void client_parse_line(ws_client_t client, const char *line) {
@@ -78,11 +112,29 @@ static void client_parse_line(ws_client_t client, const char *line) {
 	}
 }
 
+static int client_handle_frame(ws_client_t client, uint8_t *payload, uint64_t payload_length, int opcode, bool fin) {
+	switch (opcode) {
+	case 1: {
+		ESP_LOGI(TAG, "Client %d sent: %.*s", client->sockfd, (int) payload_length, payload);
+		return 0;
+	} break;
+	case 8: {
+		ESP_LOGI(TAG, "Client %d closed the websocket: %.*s", client->sockfd, (int) payload_length, payload);
+		client->state = WS_STATE_CLOSED;
+		return -1;
+	} break;
+	default: {
+		ESP_LOGW(TAG, "Client %d sent unexpected opcode %d", client->sockfd, opcode);
+		return -1;
+	} break;
+	}
+}
+
 static int client_extract_frame(ws_client_t client) {
 	uint8_t *buf = client->buf;
 	int pos = client->pos;
 	if (pos < 2) return 0;
-	int fin = buf[0] & 0x80;
+	bool fin = 0 != (buf[0] & 0x80);
 	int opcode = buf[0] & 0x0f;
 	int masked = buf[1] & 0x80;
 	uint64_t payload_length = buf[1] & 0x7f;
@@ -100,7 +152,7 @@ static int client_extract_frame(ws_client_t client) {
 		if (pos < hdr_len) return 0;
 		payload_length <<= 32;
 		payload_length = (payload_length << 32) +
-				(buf[4] << 24) + (buf[5] << 16) + (buf[6] << 8) + buf[7];
+		                 (buf[4] << 24) + (buf[5] << 16) + (buf[6] << 8) + buf[7];
 	}
 
 	if (masked) {
@@ -122,25 +174,15 @@ static int client_extract_frame(ws_client_t client) {
 		payload[i] ^= mask[i % 4];
 	}
 
-	switch (opcode) {
-	case 1: {
+	client_handle_frame(client, payload, payload_length, opcode, fin);
 
-		ESP_LOGI(TAG, "Client %d sent: %.*s", client->sockfd, (int) payload_length, payload);
+	int idx = hdr_len + payload_length;
+	size_t rem = client->pos - idx;
+	uint8_t *next = client->buf + idx;
+	memcpy(client->buf, next, rem);
+	client->pos = rem;
 
-
-	} break;
-	default: {
-		ESP_LOGW(TAG, "Client %d sent unexpected opcode", client->sockfd);
-		client->state = WS_STATE_CLOSED;
-	} break;
-	}
-
-	uint8_t *next_frame = payload + payload_length;
-	size_t rem = pos - (buf - next_frame);
-	memcpy(client->buf, next_frame, rem);
-	client->pos -= rem;
-
-	return 0;
+	return 1;
 }
 
 static int client_extract_line(ws_client_t client) {
@@ -153,8 +195,9 @@ static int client_extract_line(ws_client_t client) {
 
 			client_parse_line(client, line);
 
-			int rem = client->pos - j - 1;
-			uint8_t *next = client->buf + j + 1;
+			int idx = j + 1;
+			size_t rem = client->pos - idx;
+			uint8_t *next = client->buf + idx;
 			memcpy(client->buf, next, rem);
 			client->pos = rem;
 			return 1;
@@ -176,9 +219,9 @@ static int client_extract_line(ws_client_t client) {
 
 static void client_send_handshake(ws_client_t client) {
 	const char WS_RSP_1[] = "HTTP/1.1 101 Switching Protocols\r\n"
-			"Upgrade: websocket\r\n"
-			"Connection: Upgrade\r\n"
-			"Sec-WebSocket-Accept: ";
+	                        "Upgrade: websocket\r\n"
+	                        "Connection: Upgrade\r\n"
+	                        "Sec-WebSocket-Accept: ";
 	const char WS_RSP_2[] = "\r\n\r\n";
 	ssize_t r;
 
@@ -238,6 +281,41 @@ void client_handle(ws_client_t client, fd_set *fds) {
 	}
 }
 
+static esp_err_t server_accept_client() {
+	struct sockaddr_in client_addr;
+	ws_client_t client;
+	socklen_t client_addr_len;
+	int ret;
+
+	if (clients_num >= max_clients) {
+		return ESP_FAIL;
+	}
+
+	client_addr_len = sizeof(client_addr);
+	ret = accept(sockfd, (struct sockaddr *) &client_addr, &client_addr_len);
+	if (ret < 0) {
+		ESP_LOGE(TAG, "accept: %s", strerror(errno));
+		return ESP_FAIL;
+	}
+
+	client = clients[clients_num++];
+	client->sockfd = ret;
+	client->writable = 0;
+	client->state = WS_STATE_HEADERS;
+	client->buf_len = 128;
+	client->pos = 0;
+	memset(client->key, 0, WS_MAX_KEY_LENGTH);
+
+	ret = fcntl(client->sockfd, F_SETFL, O_NONBLOCK);
+	if (ret < 0) {
+		ESP_LOGE(TAG, "fcntl: %s", strerror(errno));
+		close(client->sockfd);
+		return ESP_FAIL;
+	}
+
+	return ESP_OK;
+}
+
 
 // handles clients when they first connect. passes to a queue
 static esp_err_t server_main(void* pvParameters) {
@@ -247,10 +325,7 @@ static esp_err_t server_main(void* pvParameters) {
 	fd_set *writefds;
 	fd_set *exceptfds;
 	struct timeval timeout;
-	int clients_num;
 	int max_fd;
-	socklen_t client_addr_len;
-	struct sockaddr_in client_addr;
 	ws_client_t client;
 
 	clients_num = 0;
@@ -313,35 +388,18 @@ static esp_err_t server_main(void* pvParameters) {
 			max_fd = client->sockfd > max_fd ? client->sockfd : max_fd;
 		}
 
-		timeout.tv_sec = 10;
+		timeout.tv_sec = 100;
 		timeout.tv_usec = 0;
 		ret = select(max_fd + 1, readfds, writefds, exceptfds, &timeout);
+		if (ret == 0) {
+			continue;
+		}
+
 		ESP_LOGI(TAG, "select returned %d", ret);
 
 		if (FD_ISSET(sockfd, readfds)) {
 			ESP_LOGI(TAG, "server socket becomes readable");
-			if (clients_num < max_clients) {
-				client_addr_len = sizeof(client_addr);
-				ret = accept(sockfd, (struct sockaddr *) &client_addr, &client_addr_len);
-				if (ret < 0) {
-					ESP_LOGE(TAG, "accept: %s", strerror(errno));
-				} else {
-					client = clients[clients_num++];
-					client->sockfd = ret;
-					client->writable = 0;
-					client->state = WS_STATE_HEADERS;
-					client->buf_len = 128;
-					client->pos = 0;
-					memset(client->key, 0, WS_MAX_KEY_LENGTH);
-
-					ret = fcntl(client->sockfd, F_SETFL, O_NONBLOCK);
-					if (ret < 0) {
-						ESP_LOGE(TAG, "fcntl: %s", strerror(errno));
-						close(sockfd);
-						return ESP_FAIL;
-					}
-				}
-			}
+			server_accept_client();
 		}
 
 		if (FD_ISSET(sockfd, exceptfds)) {

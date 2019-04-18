@@ -11,10 +11,11 @@ struct setting_hdr {
 	size_t size;
 	settings_listener_func_t listener;
 	void *closure;
+	void *value;
 };
 
 typedef struct setting_hdr *setting_ptr_t;
-typedef map_t(setting_ptr_t) map_settings_t;
+typedef map_t (setting_ptr_t) map_settings_t;
 static map_settings_t map;
 
 static char TAG[] = "Settings";
@@ -25,10 +26,10 @@ int settings_init() {
 	ESP_LOGI(TAG, "Initializing SPIFFS");
 
 	esp_vfs_spiffs_conf_t conf = {
-			.base_path = "/spiffs",
-			.partition_label = NULL,
-			.max_files = 5,
-			.format_if_mount_failed = true
+		.base_path = "/spiffs",
+		.partition_label = NULL,
+		.max_files = 5,
+		.format_if_mount_failed = true
 	};
 
 	esp_err_t ret = esp_vfs_spiffs_register(&conf);
@@ -56,33 +57,22 @@ int settings_init() {
 	return 0;
 }
 
-int settings_register(const char *key, const void *value, size_t size) {
-	setting_ptr_t s, *sp;
-	uint8_t *stored_value;
+static int settings_register_allocated(const char *key, setting_ptr_t s) {
+	setting_ptr_t *sp;
 	int r;
 	FILE* f;
 	struct stat st;
 	char filename[32];
 
-	ESP_LOGI(TAG, "Registering %s with size %d", key, size);
+	// Check if this setting is already allocated
+	ESP_LOGI(TAG, "Registering %s with size %d", key, s->size);
 	sp = map_get(&map, key);
 	if (sp != NULL) {
 		ESP_LOGE(TAG, "Setting %s already exists", key);
 		return -1;
 	}
 
-	s = (setting_ptr_t) malloc(sizeof(*s) + size);
-	if (s == NULL) {
-		ESP_LOGE(TAG, "Setting %s could not be allocated", key);
-		return -1;
-	}
-
-	s->size = size;
-	s->closure = NULL;
-	s->listener = NULL;
-	stored_value = (uint8_t *)s + sizeof(*s);
-	memcpy(stored_value, value, size);
-
+	// Read the value from the file, if it exists
 	snprintf(filename, sizeof(filename), "/spiffs/etc/%s", key);
 	if (stat(filename, &st) == 0) {
 		ESP_LOGI(TAG, "Reading file");
@@ -91,15 +81,40 @@ int settings_register(const char *key, const void *value, size_t size) {
 			ESP_LOGE(TAG, "Failed to open file for reading");
 			return -1;
 		}
-		fread(stored_value, 1, size, f);
+		fread(s->value, 1, s->size, f);
 		fclose(f);
 	}
 
-
+	// Add the setting to the map
 	r = map_set(&map, key, s);
 	if (r < 0) {
 		ESP_LOGE(TAG, "Setting %s could not be set", key);
 		return -1;
+	}
+	return r;
+}
+
+int settings_register(const char *key, const void *default_value, size_t size) {
+	setting_ptr_t s;
+	int r;
+
+	// Allocate some memory for this setting
+	s = (setting_ptr_t) malloc(sizeof(*s) + size);
+	if (s == NULL) {
+		ESP_LOGE(TAG, "Setting %s could not be allocated", key);
+		return -1;
+	}
+
+	// Set the default values
+	s->size = size;
+	s->closure = NULL;
+	s->listener = NULL;
+	s->value = (uint8_t *)s + sizeof(*s);
+	memcpy(s->value, default_value, size);
+
+	r = settings_register_allocated(key, s);
+	if (r < 0) {
+		free(s);
 	}
 	return r;
 }
@@ -150,19 +165,21 @@ int settings_write(const char *key, const void *value, size_t size) {
 
 	stored_value = (uint8_t *)s + sizeof(*s);
 
+	ESP_LOGD(TAG, "memcpying %d bytes", size);
 	memcpy(stored_value, value, size);
 
 	char filename[32];
 	snprintf(filename, sizeof(filename), "/spiffs/etc/%s", key);
 	FILE* f = fopen(filename, "wb");
-    if (f == NULL) {
-        ESP_LOGE(TAG, "Failed to open file for writing");
-    } else {
-    	fwrite(stored_value, 1, s->size, f);
-        fclose(f);
-    }
+	if (f == NULL) {
+		ESP_LOGE(TAG, "Failed to open file for writing");
+	} else {
+		fwrite(stored_value, 1, s->size, f);
+		fclose(f);
+	}
 
 	if (s->listener != NULL) {
+		ESP_LOGD(TAG, "calling listener");
 		s->listener(key, value, s->size, s->closure);
 	}
 

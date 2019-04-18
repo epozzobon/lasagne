@@ -1,1 +1,8 @@
 build/
+.cproject
+.settings/
+.idea/
+.project
+cmake-build-debug/
+sdkconfig.old
+tags
