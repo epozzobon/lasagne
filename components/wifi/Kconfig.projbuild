@@ -1,0 +1,33 @@
+menu "Example Configuration"
+
+config DEFAULT_WIFI_AP_SSID
+    string "Default SSID for the wifi access point mode"
+	default "can-lasagne"
+	help
+		Default SSID to be used when wifi is started in SoftAP mode.
+
+config DEFAULT_WIFI_AP_PASS
+    string "Default password for the wifi access point mode"
+	default "example-password"
+	help
+		Default password to be used when wifi is started in SoftAP mode.
+
+config DEFAULT_WIFI_STA_SSID
+    string "Default SSID for the wifi station mode"
+	default "example-ssid"
+	help
+		Default SSID to be used when wifi is started in station mode.
+
+config DEFAULT_WIFI_STA_PASS
+    string "Default password for the wifi station mode"
+	default "example-password"
+	help
+		Default password to be used when wifi is started in station mode.
+		
+config MAX_STA_CONN
+    int "Maximal STA connections"
+    default 4
+    help
+        Max number of stations that can connect when wifi is started in SoftAP mode.
+
+endmenu

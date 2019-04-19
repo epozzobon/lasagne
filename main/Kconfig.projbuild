@@ -1,14 +1,10 @@
 menu "Example Configuration"
 
-config BLINK_GPIO
+config AP_BUTTON_GPIO
     int "Blink GPIO number"
-	range 0 34
-	default 5
+	range 0 39
+	default 0
 	help
-		GPIO number (IOxx) to blink on and off.
-
-		Some GPIOs are used for other purposes (flash connections, etc.) and cannot be used to blink.
-
-		GPIOs 35-39 are input-only so cannot be used as outputs.
+		GPIO number (IOxx) that switches back to AP mode, to allow for reconfiguration.
 
 endmenu

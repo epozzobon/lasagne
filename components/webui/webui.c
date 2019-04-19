@@ -14,10 +14,6 @@
 #include "webui.h"
 #include "pages.h"
 
-#define WEBUI_TASK_NAME_LEN 20
-#define WEBUI_RXBUF_LEN 2048
-#define WEBUI_TXBUF_LEN 2048
-
 static char TAG[] = "webui";
 static httpd_handle_t server;
 

@@ -11,7 +11,6 @@
 
 static char TAG[] = "WEBUI_CTRL";
 
-
 /* An HTTP PUT handler. This demonstrates realtime
  * registration and deregistration of URI handlers
  */

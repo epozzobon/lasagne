@@ -3,7 +3,7 @@
 # project subdirectory.
 #
 
-PROJECT_NAME := blink
+PROJECT_NAME := lasagne
 
 include $(IDF_PATH)/make/project.mk
 

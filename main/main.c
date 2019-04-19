@@ -14,10 +14,7 @@
 #include "ws.h"
 #include "can.h"
 #include "settings.h"
-
-#ifdef ENABLE_LCD_UI
 #include "lcdui.h"
-#endif
 
 
 static int must_cleanup = 0;
@@ -33,13 +30,11 @@ static esp_err_t event_handler(void *ctx, system_event_t *event) {
 
 	switch(event->event_id) {
 	case SYSTEM_EVENT_STA_GOT_IP:
-		webui_start();
 		must_cleanup = 1;
 		break;
 	case SYSTEM_EVENT_STA_DISCONNECTED:
 		if (must_cleanup) {
 			must_cleanup = 0;
-			webui_stop();
 		}
 		break;
 	default:
@@ -79,6 +74,7 @@ void app_main() {
 	cannelloni_init();
 	wifi_start();
 
+	webui_start();
 	ws_start();
 	cannelloni_start();
 
@@ -91,14 +87,12 @@ void app_main() {
 	};
 	ESP_ERROR_CHECK(spi_bus_initialize(VSPI_HOST, &bus_config, 1));
 
-#ifdef ENABLE_LCD_UI
 	lcdui_start();
-#endif
 
 	//Initialize GPIO interrupt to switch to AP mode
 	gpio_config_t io_conf;
 	io_conf.intr_type = GPIO_INTR_NEGEDGE;
-	io_conf.pin_bit_mask = 1;
+	io_conf.pin_bit_mask = BIT(CONFIG_AP_BUTTON_GPIO);
 	io_conf.mode = GPIO_MODE_INPUT;
 	io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
 	gpio_config(&io_conf);

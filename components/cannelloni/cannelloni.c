@@ -182,7 +182,9 @@ void cannelloni_can_main() {
 					if (r < 0) {
 						ESP_LOGW(TAG, "sendto: %s", strerror(errno));
 					} else {
-						ESP_LOGI(TAG, "UDP message (%dB) sent to %08x:%d", r, ntohl(udp_client.sin_addr.s_addr), ntohs(udp_client.sin_port));
+						uint32_t addr = ntohl(udp_client.sin_addr.s_addr);
+						uint16_t port = ntohs(udp_client.sin_port);
+						ESP_LOGI(TAG, "UDP message (%dB) sent to %08x:%d", r, addr, port);
 					}
 				}
 
@@ -397,5 +399,5 @@ void cannelloni_init() {
 	settings_register("can_baud", &default_baud, sizeof(default_baud));
 	settings_subscribe("can_baud", can_baud_config_listener, NULL);
 
-	xTaskCreate(&cannelloni_can_task, "cannelloni_can_task", 2048, NULL, 5, &cannelloni_can_task_handle);
+	xTaskCreate(&cannelloni_can_task, "cannelloni_can", 2048, NULL, 5, &cannelloni_can_task_handle);
 }

@@ -15,10 +15,10 @@
 
 #include "settings.h"
 
-#define DEFAULT_WIFI_SSID      "example-ssid"
-#define DEFAULT_WIFI_PASS      "example-password"
-#define DEFAULT_WIFI_AP_SSID      "can-lasagne"
-#define DEFAULT_WIFI_AP_PASS      "example-password"
+#define DEFAULT_WIFI_SSID      CONFIG_DEFAULT_WIFI_STA_SSID
+#define DEFAULT_WIFI_PASS      CONFIG_DEFAULT_WIFI_STA_PASS
+#define DEFAULT_WIFI_AP_SSID      CONFIG_DEFAULT_WIFI_AP_SSID
+#define DEFAULT_WIFI_AP_PASS      CONFIG_DEFAULT_WIFI_AP_PASS
 
 /* FreeRTOS event group to signal when we are connected*/
 static EventGroupHandle_t s_wifi_event_group;
@@ -37,7 +37,7 @@ void wifi_init_softap() {
 			.ssid = DEFAULT_WIFI_AP_SSID,
 			.ssid_len = strlen(DEFAULT_WIFI_AP_SSID),
 			.password = DEFAULT_WIFI_AP_PASS,
-			.max_connection = 5,
+			.max_connection = CONFIG_MAX_STA_CONN,
 			.authmode = WIFI_AUTH_WPA_WPA2_PSK
 		},
 	};

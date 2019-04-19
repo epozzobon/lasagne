@@ -4,5 +4,6 @@ build/
 .idea/
 .project
 cmake-build-debug/
+sdkconfig
 sdkconfig.old
 tags

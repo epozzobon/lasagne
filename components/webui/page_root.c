@@ -13,10 +13,6 @@
 #define HTTPD_RESP_SEND_STR(req, s) (httpd_resp_send_chunk(req, s, STRLEN(s)))
 #define QUOTE(...) #__VA_ARGS__
 
-#define WEBUI_TASK_NAME_LEN 20
-#define WEBUI_RXBUF_LEN 2048
-#define WEBUI_TXBUF_LEN 2048
-
 static char TAG[] = "WEBUI_ROOT";
 
 httpd_uri_t uri_root = {

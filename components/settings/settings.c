@@ -166,6 +166,7 @@ int settings_write(const char *key, const void *value, size_t size) {
 	stored_value = (uint8_t *)s + sizeof(*s);
 
 	ESP_LOGD(TAG, "memcpying %d bytes", size);
+	memset(stored_value, 0, s->size);
 	memcpy(stored_value, value, size);
 
 	char filename[32];
@@ -173,17 +174,22 @@ int settings_write(const char *key, const void *value, size_t size) {
 	FILE* f = fopen(filename, "wb");
 	if (f == NULL) {
 		ESP_LOGE(TAG, "Failed to open file for writing");
-	} else {
-		fwrite(stored_value, 1, s->size, f);
-		fclose(f);
+		return -1;
+	}
+
+	size_t written = fwrite(stored_value, s->size, 1, f);
+	fclose(f);
+	if (written != 1) {
+		ESP_LOGE(TAG, "Failed to write file");
+		return -1;
 	}
 
 	if (s->listener != NULL) {
 		ESP_LOGD(TAG, "calling listener");
-		s->listener(key, value, s->size, s->closure);
+		s->listener(key, value, size, s->closure);
 	}
 
-	return s->size;
+	return size;
 }
 
 int settings_read(const char *key, void *value, size_t size) {

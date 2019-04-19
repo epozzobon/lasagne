@@ -11,7 +11,6 @@
 
 static char TAG[] = "WEBUI_CTRL";
 
-
 /* An HTTP POST handler */
 esp_err_t echo_post_handler(httpd_req_t *req) {
 	char buf[100];

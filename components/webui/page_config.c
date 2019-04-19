@@ -12,10 +12,6 @@
 #define HTTPD_RESP_SEND_STR(req, s) (httpd_resp_send_chunk(req, s, STRLEN(s)))
 #define QUOTE(...) #__VA_ARGS__
 
-#define WEBUI_TASK_NAME_LEN 20
-#define WEBUI_RXBUF_LEN 2048
-#define WEBUI_TXBUF_LEN 2048
-
 static char TAG[] = "WEBUI_ROOT";
 
 httpd_uri_t uri_config = {
@@ -31,10 +27,10 @@ static esp_err_t post_parameter_received(httpd_req_t *req, const char *key, cons
 	ESP_LOGI(TAG, "POST VALUE: %s", value);
 
 	if (0 == strcmp(key, "wifi_ssid")) {
-		r = settings_write("wifi_ssid", value, strlen(value));
+		r = settings_write("wifi_ssid", value, strlen(value) + 1);
 		return r < 0 ? ESP_ERR_INVALID_ARG : ESP_OK;
 	} else if (0 == strcmp(key, "wifi_pwd")) {
-		r = settings_write("wifi_password", value, strlen(value));
+		r = settings_write("wifi_password", value, strlen(value) + 1);
 		return r < 0 ? ESP_ERR_INVALID_ARG : ESP_OK;
 	} else if (0 == strcmp(key, "cannelloni_ip")) {
 		struct sockaddr_in addr;

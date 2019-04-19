@@ -12,14 +12,17 @@
 #include <math.h>
 #include <sdkconfig.h>
 #include <driver/gpio.h>
-#include <lcdui.h>
 
 #include "lcdui.h"
+
+#ifdef CONFIG_LCDUI_ENABLED
 #include "tft.h"
 #include "font.h"
 
 static const char *TAG = "LCDUI";
 static ili_device_handle_t ili_dev = NULL;
+
+static esp_err_t lcdui_print_string(const char *string, uint16_t x, uint16_t y);
 
 static void lcdui_main(void *params) {
 	esp_err_t r;
@@ -52,10 +55,6 @@ static void lcdui_main(void *params) {
 	}
 }
 
-esp_err_t lcdui_append_CAN_message(const can_message_t* msg) {
-	return ESP_OK;
-}
-
 static void lcdui_task(void *params) {
 	ESP_LOGD(TAG, "lcdui task starting");
 	lcdui_main(params);
@@ -63,12 +62,7 @@ static void lcdui_task(void *params) {
 	vTaskDelete(NULL);
 }
 
-void lcdui_start() {
-	xTaskCreate(&lcdui_task, "lcdui_task", 3000, NULL, 9, NULL);
-
-}
-
-esp_err_t lcdui_print_string(const char *string, uint16_t x, uint16_t y) {
+static esp_err_t lcdui_print_string(const char *string, uint16_t x, uint16_t y) {
 	esp_err_t r;
 	for (int i = 0;; i++) {
 		uint8_t c = (uint8_t) string[i];
@@ -88,5 +82,18 @@ esp_err_t lcdui_print_string(const char *string, uint16_t x, uint16_t y) {
 			return r;
 	}
 	return ESP_OK;
+}
+#endif
+
+esp_err_t lcdui_append_CAN_message(const can_message_t* msg) {
+#ifdef CONFIG_LCDUI_ENABLED
+#endif
+	return ESP_OK;
+}
+
+void lcdui_start() {
+#ifdef CONFIG_LCDUI_ENABLED
+	xTaskCreate(&lcdui_task, "lcdui_task", 3000, NULL, 9, NULL);
+#endif
 }
 

@@ -1,0 +1,9 @@
+menu "Example Configuration"
+
+config LCDUI_ENABLED
+    bool "Enable LCD user interface"
+	default false
+	help
+		Enables an user interface for the ODROID-GO screen
+
+endmenu
